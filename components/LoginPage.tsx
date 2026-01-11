@@ -59,7 +59,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, isDarkMode }) => {
     setIsLoading(true);
     const demoProfile: UserProfile = {
       name: "Demo Student",
-      email: "student@academic-engine.ai",
+      email: "student@mastery-engine.ai",
       picture: "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix",
     };
     
@@ -116,7 +116,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, isDarkMode }) => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
-          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">Academic Engine</h1>
+          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">Mastery Engine</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-3 text-lg font-medium">Master the concepts, not just the answers.</p>
         </div>
 

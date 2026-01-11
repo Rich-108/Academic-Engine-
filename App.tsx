@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Message, FileData, GlossaryItem } from './types';
 import { getGeminiResponse } from './services/geminiService';
 import ChatMessage from './components/ChatMessage';
@@ -7,6 +7,7 @@ import LoginPage from './components/LoginPage';
 import Glossary from './components/Glossary';
 import TutorialOverlay from './components/TutorialOverlay';
 import ProjectInfoModal from './components/ProjectInfoModal';
+import ConfirmationModal from './components/ConfirmationModal';
 
 interface UserProfile {
   name: string;
@@ -17,15 +18,16 @@ interface UserProfile {
 const INITIAL_MESSAGE: Message = {
   id: 'welcome',
   role: 'assistant',
-  content: "Hello! I'm your Academic Engine. Ask me any question about your studies, or upload an image of your textbook/notes, and I'll help you master the core concepts. What are we exploring today?\n\n[RELATED_TOPICS: Photosynthesis, Quantum Mechanics, French Revolution]",
+  content: "Hello! I'm your Mastery Engine. Ask me any question about your studies, or upload an image of your textbook/notes, and I'll help you master the core concepts. What are we exploring today?\n\n[RELATED_TOPICS: Photosynthesis, Quantum Mechanics, French Revolution]",
   timestamp: new Date(),
 };
 
-const STORAGE_KEY = 'academic_engine_chat_history';
-const USER_KEY = 'academic_engine_user_profile';
-const MODEL_KEY = 'academic_engine_selected_model';
-const GLOSSARY_KEY = 'academic_engine_glossary';
-const TUTORIAL_KEY = 'academic_engine_tutorial_seen';
+const STORAGE_KEY = 'mastery_engine_chat_history';
+const USER_KEY = 'mastery_engine_user_profile';
+const MODEL_KEY = 'mastery_engine_selected_model';
+const GLOSSARY_KEY = 'mastery_engine_glossary';
+const TUTORIAL_KEY = 'mastery_engine_tutorial_seen';
+const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB Limit
 
 const MODELS = [
   { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro', desc: 'Complex reasoning' },
@@ -85,6 +87,7 @@ const App: React.FC = () => {
   const [isGlossaryOpen, setIsGlossaryOpen] = useState(false);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -99,10 +102,76 @@ const App: React.FC = () => {
     return false;
   });
 
+  // Undo/Redo State
+  const [inputHistory, setInputHistory] = useState<string[]>(['']);
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const isInternalUpdate = useRef(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const messagesRef = useRef<Message[]>(messages);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Undo/Redo logic
+  useEffect(() => {
+    if (isInternalUpdate.current) {
+      isInternalUpdate.current = false;
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (input !== inputHistory[historyIndex]) {
+        const newHistory = inputHistory.slice(0, historyIndex + 1);
+        newHistory.push(input);
+        // Limit history size to 50 snapshots
+        if (newHistory.length > 50) newHistory.shift();
+        
+        setInputHistory(newHistory);
+        setHistoryIndex(newHistory.length - 1);
+      }
+    }, 500); // 500ms debounce for history snapshots
+
+    return () => clearTimeout(timer);
+  }, [input, inputHistory, historyIndex]);
+
+  const handleUndo = useCallback(() => {
+    if (historyIndex > 0) {
+      isInternalUpdate.current = true;
+      const prevValue = inputHistory[historyIndex - 1];
+      setInput(prevValue);
+      setHistoryIndex(historyIndex - 1);
+    }
+  }, [historyIndex, inputHistory]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndex < inputHistory.length - 1) {
+      isInternalUpdate.current = true;
+      const nextValue = inputHistory[historyIndex + 1];
+      setInput(nextValue);
+      setHistoryIndex(historyIndex + 1);
+    }
+  }, [historyIndex, inputHistory]);
+
+  // Keyboard shortcuts for Undo/Redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isZ = e.key.toLowerCase() === 'z';
+      const isMeta = e.metaKey || e.ctrlKey;
+      const isShift = e.shiftKey;
+
+      if (isMeta && isZ) {
+        e.preventDefault();
+        if (isShift) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -207,18 +276,16 @@ const App: React.FC = () => {
     }
   };
 
-  const resetChat = () => {
-    if (window.confirm("Delete all chat history? This action cannot be undone and will reset your session.")) {
-      const freshMessage = { ...INITIAL_MESSAGE, timestamp: new Date() };
-      setMessages([freshMessage]);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([freshMessage]));
-      setInput('');
-      setSelectedFile(null);
-      setError(null);
-      setIsLoading(false);
-      if (isRecording) {
-        recognitionRef.current?.stop();
-      }
+  const handleClearHistory = () => {
+    const freshMessage = { ...INITIAL_MESSAGE, timestamp: new Date() };
+    setMessages([freshMessage]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([freshMessage]));
+    setInput('');
+    setSelectedFile(null);
+    setError(null);
+    setIsLoading(false);
+    if (isRecording) {
+      recognitionRef.current?.stop();
     }
   };
 
@@ -240,14 +307,15 @@ const App: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 10 * 1024 * 1024) {
-      setError("The attached file exceeds the 10MB limit. For optimal analysis, please use a smaller file.");
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      const sizeInMB = (file.size / (1024 * 1024)).toFixed(1);
+      setError(`The selected file is too large (${sizeInMB}MB). Please upload a file smaller than 5.0MB to ensure optimal processing speed and accuracy.`);
       return;
     }
 
     const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
     if (!validTypes.includes(file.type)) {
-      setError("Only images (JPEG, PNG, WebP) and PDF documents are supported for conceptual analysis.");
+      setError("Unsupported file format. Please upload an image (JPEG, PNG, WebP) or a PDF document for analysis.");
       return;
     }
 
@@ -346,7 +414,7 @@ const App: React.FC = () => {
 
       setMessages(prev => [...prev, assistantMessage]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'The Academic Engine encountered a network issue. Please check your internet connection.');
+      setError(err instanceof Error ? err.message : 'The Mastery Engine encountered a network issue. Please check your internet connection.');
     } finally {
       setIsLoading(false);
     }
@@ -380,7 +448,7 @@ const App: React.FC = () => {
           </div>
           <div className="hidden xs:block">
             <div className="flex items-center space-x-2">
-              <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight transition-colors text-nowrap">Academic Engine</h1>
+              <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight transition-colors text-nowrap">Mastery Engine</h1>
               {showSavedIndicator && (
                 <span role="status" aria-live="polite" className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full animate-in fade-in slide-in-from-top-1 duration-500">
                   SAVED
@@ -468,7 +536,7 @@ const App: React.FC = () => {
               )}
             </button>
             <button 
-              onClick={resetChat}
+              onClick={() => setIsConfirmClearOpen(true)}
               className="flex items-center space-x-1 px-3 py-1.5 rounded-full border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-xs font-bold"
               aria-label="Clear Chat History"
               title="Clear all chat history"
@@ -524,7 +592,7 @@ const App: React.FC = () => {
           {isLoading && (
             <div className="flex justify-start mb-6 animate-pulse" aria-label="Engine is thinking">
               <div className="flex-shrink-0 h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-900/40 mr-3 flex items-center justify-center" aria-hidden="true">
-                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">AE</span>
+                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">ME</span>
               </div>
               <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl rounded-tl-none px-6 py-4 shadow-sm">
                 <div className="flex space-x-2">
@@ -532,7 +600,7 @@ const App: React.FC = () => {
                   <div className="h-2 w-2 bg-indigo-400 rounded-full animate-bounce delay-75"></div>
                   <div className="h-2 w-2 bg-indigo-400 rounded-full animate-bounce delay-150"></div>
                 </div>
-                <span className="sr-only">Academic Engine is analyzing...</span>
+                <span className="sr-only">Mastery Engine is analyzing...</span>
               </div>
             </div>
           )}
@@ -560,6 +628,37 @@ const App: React.FC = () => {
 
       <footer role="contentinfo" className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 md:p-6 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] transition-colors">
         <div className="max-w-4xl mx-auto">
+          {/* Input Header with Undo/Redo */}
+          <div className="flex items-center justify-between mb-2 px-1">
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={handleUndo}
+                disabled={historyIndex === 0}
+                title="Undo (Ctrl+Z)"
+                className={`p-1 rounded-md transition-all ${historyIndex === 0 ? 'text-slate-200 dark:text-slate-800' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 dark:text-slate-400'}`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l5 5m-5-5l5-5" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={handleRedo}
+                disabled={historyIndex >= inputHistory.length - 1}
+                title="Redo (Ctrl+Shift+Z)"
+                className={`p-1 rounded-md transition-all ${historyIndex >= inputHistory.length - 1 ? 'text-slate-200 dark:text-slate-800' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 dark:text-slate-400'}`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2M21 10l-5 5m5-5l-5-5" />
+                </svg>
+              </button>
+            </div>
+            {selectedFile && (
+              <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest animate-pulse">File Ready</span>
+            )}
+          </div>
+
           {selectedFile && (
             <div className="mb-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
               <div className="relative inline-block">
@@ -606,8 +705,8 @@ const App: React.FC = () => {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="p-2 rounded-lg text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all"
-                  title="Upload image or document"
-                  aria-label="Upload academic source (image or PDF)"
+                  title="Upload image or document (Max 5MB)"
+                  aria-label="Upload academic source (image or PDF, max 5MB)"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
@@ -653,7 +752,7 @@ const App: React.FC = () => {
             </button>
           </form>
           <p className="text-[10px] text-center text-slate-400 dark:text-slate-500 mt-3 uppercase tracking-widest font-bold">
-            Academic Engine: {MODELS.find(m => m.id === selectedModel)?.name} • Concept &gt; Answer
+            Mastery Engine: {MODELS.find(m => m.id === selectedModel)?.name} • Concept &gt; Answer • Max 5MB
           </p>
         </div>
       </footer>
@@ -676,6 +775,16 @@ const App: React.FC = () => {
       <ProjectInfoModal 
         isOpen={isInfoOpen}
         onClose={() => setIsInfoOpen(false)}
+        isDarkMode={isDarkMode}
+      />
+
+      <ConfirmationModal
+        isOpen={isConfirmClearOpen}
+        onClose={() => setIsConfirmClearOpen(false)}
+        onConfirm={handleClearHistory}
+        title="Clear Analysis History?"
+        message="This action will permanently delete your current session history and cannot be undone. Your Glossary items will remain safe."
+        confirmLabel="Yes, Clear Everything"
         isDarkMode={isDarkMode}
       />
     </div>

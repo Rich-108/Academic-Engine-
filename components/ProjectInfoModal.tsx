@@ -104,7 +104,7 @@ const ProjectInfoModal: React.FC<ProjectInfoModalProps> = ({ isOpen, onClose, is
           </div>
 
           <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Academic Engine v1.2</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Mastery Engine v1.2</p>
             <button 
               onClick={onClose}
               className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-10 py-3 rounded-full text-sm font-bold transition-all active:scale-95 shadow-lg"

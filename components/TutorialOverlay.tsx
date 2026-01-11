@@ -18,7 +18,7 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ isOpen, onClose, isDa
 
   const steps: TutorialStep[] = [
     {
-      title: "Welcome to Academic Engine",
+      title: "Welcome to Mastery Engine",
       description: "Our goal isn't just to give you answers, but to help you master the fundamental concepts behind any subject. Let's take a quick tour.",
       icon: (
         <div className="bg-indigo-600 p-3 rounded-2xl shadow-lg">

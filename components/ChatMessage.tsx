@@ -153,7 +153,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onSelectTopic, isDar
       <div className={`flex max-w-[95%] md:max-w-[80%] ${isAssistant ? 'flex-row' : 'flex-row-reverse'}`}>
         <div className={`flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm transition-colors
           ${isAssistant ? 'bg-indigo-600 mr-3' : 'bg-emerald-600 ml-3'}`} aria-hidden="true">
-          {isAssistant ? 'AE' : 'ME'}
+          {isAssistant ? 'ME' : 'U'}
         </div>
         <div className={`flex flex-col ${isAssistant ? 'items-start' : 'items-end'}`}>
           <div className={`relative px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm group transition-all duration-300

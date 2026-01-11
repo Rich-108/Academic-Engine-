@@ -10,7 +10,7 @@ interface DiagramProps {
 const Diagram: React.FC<DiagramProps> = ({ chart, isDarkMode }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{title: string, detail: string} | null>(null);
   const [isZoomed, setIsZoomed] = useState(false);
 
   useEffect(() => {
@@ -54,12 +54,38 @@ const Diagram: React.FC<DiagramProps> = ({ chart, isDarkMode }) => {
           .replace(/&gt;/g, '>')
           .trim();
 
+        // Check for common issues before rendering
+        if (cleanChart.length > 5000) {
+          setError({
+            title: 'Complexity Limit',
+            detail: 'This concept map is too large to render safely in the browser.'
+          });
+          return;
+        }
+
         const { svg: renderedSvg } = await mermaid.render(id, cleanChart);
         setSvg(renderedSvg);
         setError(null);
-      } catch (err) {
+      } catch (err: any) {
         console.error('Mermaid render error:', err);
-        setError('Visual logic is too complex for diagramming.');
+        const errorMessage = err?.message || 'Unknown error';
+        
+        if (errorMessage.includes('Parse error')) {
+          setError({
+            title: 'Mapping Syntax Error',
+            detail: 'The Engine generated invalid visual syntax. The conceptual structure is preserved in text above.'
+          });
+        } else if (errorMessage.includes('maximum level of recursion') || errorMessage.includes('too much recursion')) {
+          setError({
+            title: 'Logic Loop Detected',
+            detail: 'The concept structure contains circular logic that exceeds mapping capabilities.'
+          });
+        } else {
+          setError({
+            title: 'Visual Mapping Failed',
+            detail: 'An unexpected error occurred during rendering. Please try rephrasing for a simpler visualization.'
+          });
+        }
       }
     };
 
@@ -77,12 +103,17 @@ const Diagram: React.FC<DiagramProps> = ({ chart, isDarkMode }) => {
 
   if (error) {
     return (
-      <div role="status" className="text-[10px] text-slate-400 dark:text-slate-500 italic p-3 border border-dashed border-slate-200 dark:border-slate-800 rounded-lg bg-slate-50/50 dark:bg-slate-950/50">
-        <div className="flex items-center space-x-2">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span>{error}</span>
+      <div role="status" className="my-6 p-4 border border-dashed border-red-200 dark:border-red-900/30 rounded-2xl bg-red-50/30 dark:bg-red-950/20 text-slate-600 dark:text-slate-400">
+        <div className="flex items-start space-x-3">
+          <div className="mt-0.5 flex-shrink-0 text-red-500 dark:text-red-400">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-xs font-black uppercase tracking-widest text-red-600 dark:text-red-400 mb-1">{error.title}</p>
+            <p className="text-xs leading-relaxed opacity-80">{error.detail}</p>
+          </div>
         </div>
       </div>
     );

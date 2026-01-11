@@ -23,7 +23,7 @@ const mapErrorToUserMessage = (error: any): string => {
     return "Unable to reach the Engine. Please check your internet connection and try again.";
   }
   
-  return "The Academic Engine encountered an unexpected hiccup. Please try refreshing your session.";
+  return "The Mastery Engine encountered an unexpected hiccup. Please try refreshing your session.";
 };
 
 export const getGeminiResponse = async (
@@ -53,7 +53,7 @@ export const getGeminiResponse = async (
         { role: 'user', parts: userParts }
       ],
       config: {
-        systemInstruction: `You are Academic Engine, a world-class educational tool. 
+        systemInstruction: `You are Mastery Engine, a world-class educational tool. 
         Your primary goal is to help students learn by explaining the fundamental concepts behind their questions.
         
         Core Capabilities:
