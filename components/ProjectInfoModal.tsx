@@ -12,29 +12,29 @@ const ProjectInfoModal: React.FC<ProjectInfoModalProps> = ({ isOpen, onClose, is
 
   const steps = [
     {
-      title: "Folder Setup",
-      desc: "Put all files (index.html, App.tsx, etc.) into one folder. No build step required.",
-      status: "Ready"
+      title: "Create GitHub Repo",
+      desc: "Go to github.com and create a new repository named 'mastery-engine'. Upload your project files there.",
+      status: "Step 1"
     },
     {
-      title: "Select Provider",
-      desc: "Use Vercel or Netlify. They offer free, fast static hosting for React apps.",
-      status: "Recommended"
+      title: "Import to Vercel",
+      desc: "Log in to vercel.com and import the repo. Vercel will auto-detect the settings.",
+      status: "Step 2"
     },
     {
-      title: "Upload",
-      desc: "Drag and drop your folder into the Vercel/Netlify 'Manual Deploy' dashboard.",
-      status: "Action Required"
+      title: "Add API_KEY Variable",
+      desc: "Go to Settings > Environment Variables. Set Key as 'API_KEY' and Value as your Gemini key.",
+      status: "Step 3"
     },
     {
-      title: "Env Variables",
-      desc: "In host settings, add 'API_KEY' with your Gemini key from Google AI Studio.",
-      status: "Critical"
+      title: "Redeploy",
+      desc: "Environment variables require a fresh build. Go to Deployments > Redeploy to activate the key.",
+      status: "Step 4"
     },
     {
-      title: "Google OAuth",
-      desc: "Add your new domain to 'Authorized JavaScript origins' in Google Cloud Console.",
-      status: "Auth Sync"
+      title: "Google Auth Sync",
+      desc: "Add your vercel.app domain to 'Authorized JavaScript Origins' in your Google Cloud Console.",
+      status: "Step 5"
     }
   ];
 
@@ -52,8 +52,8 @@ const ProjectInfoModal: React.FC<ProjectInfoModalProps> = ({ isOpen, onClose, is
                 </svg>
               </div>
               <div>
-                <h2 id="info-title" className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Deployment Center</h2>
-                <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Internet Hosting Guide</p>
+                <h2 id="info-title" className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Vercel Deployment Guide</h2>
+                <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Mastery Engine Online</p>
               </div>
             </div>
             <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:ring-2 focus:ring-indigo-500">
@@ -67,7 +67,7 @@ const ProjectInfoModal: React.FC<ProjectInfoModalProps> = ({ isOpen, onClose, is
             <section>
               <h3 className="text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4 flex items-center">
                 <span className="w-8 h-px bg-slate-200 dark:bg-slate-800 mr-3"></span>
-                Hosting Checklist
+                Setup Checklist
                 <span className="w-8 h-px bg-slate-200 dark:bg-slate-800 ml-3"></span>
               </h3>
               <div className="space-y-4">
@@ -79,7 +79,7 @@ const ProjectInfoModal: React.FC<ProjectInfoModalProps> = ({ isOpen, onClose, is
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-1">
                         <p className="font-bold text-slate-900 dark:text-slate-100">{step.title}</p>
-                        <span className="text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-md bg-white dark:bg-slate-900 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-800">
+                        <span className="text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-md bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border border-slate-200 dark:border-slate-800">
                           {step.status}
                         </span>
                       </div>
@@ -93,12 +93,15 @@ const ProjectInfoModal: React.FC<ProjectInfoModalProps> = ({ isOpen, onClose, is
             <section className="bg-indigo-600 rounded-[2rem] p-6 text-white shadow-xl shadow-indigo-200 dark:shadow-none">
               <div className="flex items-center mb-3">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  <path fillRule="evenodd" d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM5.879 4.464a1 1 0 00-1.414 1.414l.707.707a1 1 0 001.414-1.414l-.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM10 18a1 1 0 100-2h-1a1 1 0 100 2h1zM4.464 18.121a1 1 0 101.414-1.414l-.707-.707a1 1 0 10-1.414 1.414l.707.707zM16 10a1 1 0 11-2 0 1 1 0 012 0zM7 10a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
                 </svg>
-                <h3 className="font-bold">Pro Security Tip</h3>
+                <h3 className="font-bold">Deep Dive: Adding the API Key</h3>
               </div>
-              <p className="text-xs text-indigo-100 leading-relaxed">
-                Currently, your API key is stored in the frontend. While this works for personal projects, for a public production app, you should create a simple server-side proxy (using Vercel Functions) to hide your Gemini key from the browser network tab.
+              <p className="text-xs text-indigo-100 leading-relaxed space-y-2">
+                1. Inside Vercel Project > <strong>Settings</strong> > <strong>Environment Variables</strong>.<br/>
+                2. Key: <code className="bg-indigo-700 px-1 rounded">API_KEY</code><br/>
+                3. Value: <i>[Paste your Gemini Key here]</i><br/>
+                4. Press <strong>Add</strong> and then go to the <strong>Deployments</strong> tab to <strong>Redeploy</strong>.
               </p>
             </section>
           </div>
@@ -109,7 +112,7 @@ const ProjectInfoModal: React.FC<ProjectInfoModalProps> = ({ isOpen, onClose, is
               onClick={onClose}
               className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-10 py-3 rounded-full text-sm font-bold transition-all active:scale-95 shadow-lg"
             >
-              Close
+              Done, Key Added!
             </button>
           </div>
         </div>
