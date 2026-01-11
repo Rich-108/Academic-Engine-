@@ -16,8 +16,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, isDarkMode }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [googleError, setGoogleError] = useState(false);
 
-  // NOTE TO USER: Replace this CLIENT_ID with the one you create in Google Cloud Console
-  const GOOGLE_CLIENT_ID = "755452627376-7m47fjk6unv4a4n6a3g78s4mcln3v7a8.apps.googleusercontent.com";
+  // Updated with the new Client ID provided by the user
+  const GOOGLE_CLIENT_ID = "499241709798-irddnbhlupples86frmcbh909hk48gh6.apps.googleusercontent.com";
 
   const decodeJwt = (token: string) => {
     try {
