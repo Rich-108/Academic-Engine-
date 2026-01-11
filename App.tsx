@@ -208,7 +208,7 @@ const App: React.FC = () => {
   };
 
   const resetChat = () => {
-    if (window.confirm("Are you sure you want to start a new chat? This will clear the current conversation.")) {
+    if (window.confirm("Delete all chat history? This action cannot be undone and will reset your session.")) {
       const freshMessage = { ...INITIAL_MESSAGE, timestamp: new Date() };
       setMessages([freshMessage]);
       localStorage.setItem(STORAGE_KEY, JSON.stringify([freshMessage]));
@@ -380,7 +380,7 @@ const App: React.FC = () => {
           </div>
           <div className="hidden xs:block">
             <div className="flex items-center space-x-2">
-              <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight transition-colors">Academic Engine</h1>
+              <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight transition-colors text-nowrap">Academic Engine</h1>
               {showSavedIndicator && (
                 <span role="status" aria-live="polite" className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full animate-in fade-in slide-in-from-top-1 duration-500">
                   SAVED
@@ -469,10 +469,14 @@ const App: React.FC = () => {
             </button>
             <button 
               onClick={resetChat}
-              className="px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all text-xs font-bold hidden sm:block"
-              aria-label="Start New Chat Session"
+              className="flex items-center space-x-1 px-3 py-1.5 rounded-full border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-xs font-bold"
+              aria-label="Clear Chat History"
+              title="Clear all chat history"
             >
-              New Session
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              <span className="hidden sm:inline">Clear History</span>
             </button>
           </div>
 
