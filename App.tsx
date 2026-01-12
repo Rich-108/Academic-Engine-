@@ -144,6 +144,23 @@ const App: React.FC = () => {
     }
   }, [historyIndex, inputHistory]);
 
+  // Keyboard shortcuts for Undo/Redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
+
   useEffect(() => {
     if (!hasEntered) return;
     messagesRef.current = messages;
@@ -474,12 +491,39 @@ const App: React.FC = () => {
                 value={input} 
                 onChange={(e) => setInput(e.target.value)} 
                 placeholder={isRecording ? "Listening to your question..." : "Ask your conceptual question..."} 
-                className={`w-full transition-all duration-300 border rounded-xl px-5 py-3 pr-24 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 dark:text-slate-200 
+                className={`w-full transition-all duration-300 border rounded-xl px-5 py-3 pr-32 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 dark:text-slate-200 
                   ${isRecording ? 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900/30 ring-2 ring-red-500/10' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`} 
                 disabled={isLoading} 
               />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-1">
-                <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-indigo-600"><svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg></button>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-0.5 sm:space-x-1">
+                {/* Undo Button */}
+                <button 
+                  type="button" 
+                  onClick={handleUndo} 
+                  disabled={historyIndex === 0}
+                  className={`p-1.5 rounded-lg transition-all ${historyIndex === 0 ? 'text-slate-200 dark:text-slate-700 cursor-not-allowed' : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'}`}
+                  title="Undo (Ctrl+Z)"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                  </svg>
+                </button>
+                {/* Redo Button */}
+                <button 
+                  type="button" 
+                  onClick={handleRedo} 
+                  disabled={historyIndex >= inputHistory.length - 1}
+                  className={`p-1.5 rounded-lg transition-all ${historyIndex >= inputHistory.length - 1 ? 'text-slate-200 dark:text-slate-700 cursor-not-allowed' : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'}`}
+                  title="Redo (Ctrl+Y)"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
+                  </svg>
+                </button>
+
+                <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-indigo-600" title="Attach context file"><svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg></button>
                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleFileChange} />
                 
                 <div className="relative">
@@ -488,6 +532,7 @@ const App: React.FC = () => {
                     type="button" 
                     onClick={toggleVoiceInput} 
                     className={`relative p-2 rounded-lg transition-all duration-300 ${isRecording ? 'text-red-600 bg-red-100 dark:bg-red-900/30' : 'text-slate-400 hover:text-indigo-600'}`}
+                    title="Voice input"
                   >
                     <svg className={`h-5 w-5 ${isRecording ? 'animate-pulse' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />

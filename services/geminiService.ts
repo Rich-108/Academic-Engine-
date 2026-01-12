@@ -4,33 +4,56 @@ import { FileData } from "../types";
 
 /**
  * Maps technical API errors to student-friendly academic feedback.
- * Specifically handles Netlify/Deployment authorization issues.
  */
 const mapErrorToUserMessage = (error: any): string => {
   const errorMessage = error?.message?.toLowerCase() || "";
   
   if (errorMessage.includes("429") || errorMessage.includes("rate limit")) {
-    return "The Engine is processing a high volume of requests. Please wait a few seconds.";
+    return "The Engine is at maximum capacity after several attempts. Please pause for 10 seconds and try your inquiry again.";
   }
   if (errorMessage.includes("safety") || errorMessage.includes("blocked")) {
-    return "This inquiry was filtered for safety. Please focus on academic exploration.";
+    return "This inquiry was filtered for academic safety. Please focus on subject exploration.";
   }
   if (errorMessage.includes("api key") || errorMessage.includes("invalid") || errorMessage.includes("401") || errorMessage.includes("403")) {
-    return "Authorization failed. If you are on Netlify, ensure the API_KEY environment variable is set in your Site Settings.";
-  }
-  if (errorMessage.includes("network") || errorMessage.includes("fetch")) {
-    return "Unable to reach the Engine. Please check your internet connection.";
-  }
-  if (errorMessage.includes("500") || errorMessage.includes("rpc failed")) {
-    return "The Engine encountered a server connectivity issue. Your current chat is preserved; please try the last request again.";
+    return "Portal authorization failed. Please check your connection or API configuration.";
   }
   
-  return "The Mastery Engine encountered an unexpected error. Your conversation history is still safe.";
+  return "The Mastery Engine encountered a connectivity issue. Your session is preserved; please retry the last request.";
 };
 
 /**
- * Increased limit to 25 messages to satisfy the request for more "available" context.
+ * Helper to sleep for a specific duration (ms)
  */
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Wraps a function with automatic retry logic using exponential backoff.
+ * Specifically handles 429 (Rate Limit) and 500 (Server Error).
+ */
+const withRetry = async <T>(fn: () => Promise<T>, maxRetries: number = 3): Promise<T> => {
+  let lastError: any;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const isRateLimit = error.message?.includes("429") || error.message?.toLowerCase().includes("rate limit");
+      const isServerError = error.message?.includes("500") || error.message?.includes("503");
+
+      if (isRateLimit || isServerError) {
+        // Calculate wait time: 1s, 2s, 4s...
+        const waitTime = Math.pow(2, attempt) * 1000;
+        console.warn(`Mastery Engine: High load detected. Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${maxRetries})`);
+        await sleep(waitTime);
+        continue;
+      }
+      // If it's a non-retryable error (like safety or 401), throw immediately
+      throw error;
+    }
+  }
+  throw lastError;
+};
+
 const trimHistory = (history: { role: 'user' | 'model', parts: { text: string }[] }[], limit: number = 25) => {
   return history.length <= limit ? history : history.slice(-limit);
 };
@@ -43,7 +66,7 @@ export const getGeminiResponse = async (
 ) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  try {
+  return withRetry(async () => {
     const userParts: any[] = [{ text: userMessage }];
     
     if (attachment) {
@@ -66,39 +89,37 @@ export const getGeminiResponse = async (
       config: {
         systemInstruction: `You are Mastery Engine, a conceptual tutor.
         
-        GREETING PROTOCOL:
-        If the input is a greeting, respond with 1 warm sentence.
+        PEDAGOGICAL MANDATE:
+        If a student asks a question about a subject, NEVER provide just the answer. 
+        Instead, you MUST first explain the underlying CONCEPT and foundational principles.
         
-        CONTEXTUAL AWARENESS:
-        You have access to the full conversation history. Always refer back to previous concepts if the student asks follow-up questions. Do not 'auto-clear' your memory.
+        GREETING PROTOCOL:
+        If the input is a greeting, respond with 1 warm sentence confirming your readiness to help.
         
         SUBJECT INQUIRY PROTOCOL:
-        Use this structure for academic topics:
-        1. THE CORE PRINCIPLE: Clear, foundational logic.
-        2. AN ANALOGY: A vivid comparison.
-        3. THE APPLICATION: Step-by-step solution.
-        4. CONCEPT MAP: Only use Mermaid diagrams for processes with 4+ steps.
+        Use this structure for all academic topics:
+        1. THE CORE PRINCIPLE: The logical "why" behind the topic.
+        2. AN ANALOGY: Compare the concept to an everyday object or experience.
+        3. THE APPLICATION: Walk through the solution or explanation step-by-step.
+        4. CONCEPT MAP: If process-oriented, provide a Mermaid diagram.
         
         STYLING CONSTRAINTS:
-        - NO markdown symbols (#, *, **, _, >).
-        - ALL CAPS for section headers.
+        - NO markdown symbols like #, *, **, _, >.
+        - USE ALL CAPS for the 4 section headers above.
         - Double line breaks between paragraphs.
-        - Finish with: [RELATED_TOPICS: Topic A, Topic B, Topic C]`,
+        - End with: [RELATED_TOPICS: Topic A, Topic B, Topic C]`,
         temperature: 0.7,
       },
     });
 
     return response.text || "No response generated.";
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    throw new Error(mapErrorToUserMessage(error));
-  }
+  });
 };
 
 export const generateSpeech = async (text: string): Promise<string | undefined> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  try {
+  return withRetry(async () => {
     const cleanText = text
       .replace(/```mermaid[\s\S]*?```/g, '')
       .replace(/\[RELATED_TOPICS:[\s\S]*?\]/g, '')
@@ -121,7 +142,5 @@ export const generateSpeech = async (text: string): Promise<string | undefined> 
     });
 
     return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  } catch (error) {
-    return undefined;
-  }
+  }, 2); // Less retries for audio to prioritize speed
 };
