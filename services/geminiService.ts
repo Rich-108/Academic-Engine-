@@ -26,7 +26,7 @@ export const getGeminiResponse = async (
   userMessage: string, 
   history: { role: 'user' | 'assistant', content: string }[],
   attachment?: FileData,
-  modelName: string = 'gemini-3-pro-preview',
+  modelName: string = 'gemini-3-flash-preview',
   useThinking: boolean = false
 ) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -51,9 +51,9 @@ export const getGeminiResponse = async (
 
     contents.push({ role: 'user', parts });
 
-    // Determine config based on model type and thinking flag
-    const isLite = modelName.includes('lite');
-    const actualModel = useThinking ? 'gemini-3-pro-preview' : modelName;
+    // Flash has a max thinking budget of 24576
+    const thinkingBudget = 24576;
+    const actualModel = useThinking ? 'gemini-3-flash-preview' : modelName;
 
     const response = await ai.models.generateContent({
       model: actualModel,
@@ -77,9 +77,7 @@ export const getGeminiResponse = async (
         
         Example: DEEP_LEARNING_TOPICS Quantum State, Wave Function, Probability Density`,
         temperature: 0.7,
-        // Apply thinking budget if explicitly requested or for Pro model
-        ...(useThinking ? { thinkingConfig: { thinkingBudget: 32768 } } : 
-           (isLite ? { thinkingConfig: { thinkingBudget: 0 } } : {})),
+        ...(useThinking ? { thinkingConfig: { thinkingBudget } } : {}),
       },
     });
 

@@ -26,8 +26,8 @@ const ENTRY_KEY = 'mastery_engine_entered';
 const THINKING_KEY = 'mastery_engine_thinking_mode';
 
 const MODELS = [
-  { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro', desc: 'Complex Logic' },
   { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', desc: 'Fast Analysis' },
+  { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro', desc: 'Complex Logic' },
   { id: 'gemini-flash-lite-latest', name: 'Gemini Lite 2.5', desc: 'Instant Responses' },
 ];
 
@@ -318,45 +318,40 @@ const App: React.FC = () => {
       setTimeout(() => setManualSaveStatus('idle'), 2000);
       return;
     }
-
     const firstUserMsg = messages.find(m => m.role === 'user')?.content || 'Conceptual Exploration';
     const title = firstUserMsg.substring(0, 40) + (firstUserMsg.length > 40 ? '...' : '');
-
-    const newSession: SavedSession = {
-      id: Date.now().toString(),
-      title,
-      timestamp: new Date(),
-      messages,
-    };
-
+    const newSession: SavedSession = { id: Date.now().toString(), title, timestamp: new Date(), messages };
     const saved = localStorage.getItem(SAVED_SESSIONS_KEY);
-    let sessions: SavedSession[] = [];
-    if (saved) {
-      try {
-        sessions = JSON.parse(saved);
-      } catch (e) { sessions = []; }
-    }
-
+    let sessions: SavedSession[] = saved ? JSON.parse(saved) : [];
     sessions.unshift(newSession);
     localStorage.setItem(SAVED_SESSIONS_KEY, JSON.stringify(sessions.slice(0, 50)));
-    
     setManualSaveStatus('saved');
     setTimeout(() => setManualSaveStatus('idle'), 3000);
   };
 
   const handleLoadSession = (session: SavedSession) => {
-    const formattedMessages = session.messages.map((m: any) => ({
-      ...m,
-      timestamp: new Date(m.timestamp)
-    }));
+    const formattedMessages = session.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
     setMessages(formattedMessages);
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(formattedMessages));
     setIsSavedChatsOpen(false);
     setError(null);
   };
 
+  const handleHarvestConcept = (term: string) => {
+    const alreadyExists = glossary.some(item => item.term.toLowerCase() === term.toLowerCase());
+    if (alreadyExists) return;
+    setGlossary(prev => [...prev, {
+      id: Date.now().toString(),
+      term,
+      subject: 'Discovered',
+      definition: 'Mastery in progress...',
+      timestamp: new Date()
+    }]);
+    setIsGlossaryOpen(true);
+  };
+
   const sendMessage = async (text: string, file?: FileData | null, lens?: string) => {
-    if ((!text.trim() && !file) || isLoading) return;
+    if ((!text.trim() && !file && !lens) || isLoading) return;
     if (isRecording) recognitionRef.current.stop();
 
     const query = lens ? `Regarding the previous concept, provide a deep analysis through the lens of: ${lens}` : text;
@@ -387,7 +382,7 @@ const App: React.FC = () => {
         query, 
         history, 
         file || undefined,
-        isThinkingMode ? 'gemini-3-pro-preview' : selectedModel,
+        isThinkingMode ? 'gemini-3-flash-preview' : selectedModel,
         isThinkingMode
       );
 
@@ -435,7 +430,20 @@ const App: React.FC = () => {
         </div>
         
         <div className="flex items-center space-x-2 md:space-x-3">
-          <button onClick={() => setIsThinkingMode(!isThinkingMode)} className={`flex items-center space-x-2 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-lg ${isThinkingMode ? 'bg-indigo-600 text-white shadow-indigo-500/50' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200'}`}>
+          {/* LIVE SESSION BUTTON */}
+          <button 
+            onClick={() => setIsLiveSessionOpen(true)} 
+            title="Open Live Conversational Voice Portal"
+            className="flex items-center space-x-2 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200 dark:shadow-none"
+          >
+            <div className="relative h-2 w-2 mr-1">
+              <div className="absolute inset-0 bg-white rounded-full animate-ping opacity-75"></div>
+              <div className="relative h-2 w-2 bg-white rounded-full"></div>
+            </div>
+            <span>LIVE Voice</span>
+          </button>
+
+          <button onClick={() => setIsThinkingMode(!isThinkingMode)} className={`flex items-center space-x-2 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-lg ${isThinkingMode ? 'bg-indigo-600 text-white shadow-indigo-500/50 ring-4 ring-indigo-500/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200'}`}>
             <svg xmlns="http://www.w3.org/2000/svg" className={`h-3.5 w-3.5 ${isThinkingMode ? 'animate-pulse' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
             <span className="hidden sm:inline">{isThinkingMode ? 'Neural Active' : 'Think Deep'}</span>
           </button>
@@ -473,15 +481,20 @@ const App: React.FC = () => {
               )}
             </div>
 
-            <button onClick={handleSaveToLibrary} disabled={messages.length <= 1} className={`p-2 rounded-full transition-all disabled:opacity-20 ${manualSaveStatus === 'saved' ? 'text-emerald-500' : 'text-slate-500 hover:text-indigo-600'}`}>
+            <button onClick={handleSaveToLibrary} disabled={messages.length <= 1} className={`p-2 rounded-full transition-all disabled:opacity-20 ${manualSaveStatus === 'saved' ? 'text-emerald-500' : 'text-slate-500 hover:text-indigo-600'}`} title="Save to Library">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
             </button>
-            <button onClick={() => setIsSavedChatsOpen(true)} className="p-2 rounded-full text-slate-500 hover:text-indigo-600 transition-all">
+            <button onClick={() => setIsSavedChatsOpen(true)} className="p-2 rounded-full text-slate-500 hover:text-indigo-600 transition-all" title="View Saved Sessions">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+            </button>
+            
+            {/* WIPE SESSION / CLEAR CHAT BUTTON */}
+            <button onClick={() => setIsConfirmClearOpen(true)} className="p-2 rounded-full text-slate-500 hover:text-rose-500 transition-all" title="Clear Current Session">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
             </button>
           </div>
 
-          <button onClick={() => setIsGlossaryOpen(true)} className="p-2 rounded-full text-slate-500 hover:text-indigo-600 transition-all"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg></button>
+          <button onClick={() => setIsGlossaryOpen(true)} className="p-2 rounded-full text-slate-500 hover:text-indigo-600 transition-all" title="Mastery Glossary"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg></button>
           <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 transition-all">{isDarkMode ? '☀️' : '🌙'}</button>
         </div>
       </header>
@@ -490,7 +503,7 @@ const App: React.FC = () => {
         <div className="max-w-4xl mx-auto">
           {messages.map((msg) => (
             <div key={msg.id} className="chat-message">
-              <ChatMessage message={msg} onSelectTopic={(t) => sendMessage(`Deep dive into: ${t}`)} onRefineConcept={(lens) => sendMessage('', null, lens)} isDarkMode={isDarkMode} />
+              <ChatMessage message={msg} onSelectTopic={(t) => sendMessage(`Deep dive into: ${t}`)} onRefineConcept={(lens) => sendMessage('', null, lens)} onHarvestConcept={handleHarvestConcept} isDarkMode={isDarkMode} />
             </div>
           ))}
           {isLoading && (
@@ -523,34 +536,42 @@ const App: React.FC = () => {
               <span className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-600 ml-4">Engaging Thought Buffer...</span>
             </div>
           )}
-          <form onSubmit={(e) => { e.preventDefault(); sendMessage(input, selectedFile); }} className="flex items-center space-x-4">
-            <div className="relative flex-1">
-              <input 
-                type="text" 
-                value={input} 
-                onChange={(e) => setInput(e.target.value)} 
-                placeholder={isThinkingMode ? "Input highly complex conceptual inquiry..." : "Ask your conceptual question..."} 
-                className={`w-full transition-all duration-500 border rounded-2xl px-6 py-4 pr-32 focus:outline-none text-slate-800 dark:text-slate-100 shadow-sm ${isThinkingMode ? 'bg-indigo-50/50 dark:bg-indigo-900/10 border-indigo-400 ring-8 ring-indigo-500/5' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`} 
-                disabled={isLoading} 
-              />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center space-x-1.5">
-                <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg></button>
-                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onloadend = () => setSelectedFile({ data: (reader.result as string).split(',')[1], mimeType: file.type });
-                  reader.readAsDataURL(file);
-                }} />
-                <button type="button" onClick={toggleVoiceInput} className={`p-2.5 rounded-xl transition-all active:scale-90 ${isRecording ? 'text-white bg-indigo-600 animate-pulse' : 'text-slate-400 hover:text-indigo-600'}`} title="Neural Voice Bridge">
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                </button>
+          
+          <div className="relative group">
+            {isThinkingMode && (
+              <div className="absolute -top-6 left-6 text-[8px] font-black uppercase tracking-[0.2em] text-indigo-500 animate-pulse bg-indigo-50 dark:bg-indigo-900/20 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
+                Neural Reasoning Engine Active
               </div>
-            </div>
-            <button type="submit" disabled={(!input.trim() && !selectedFile) || isLoading} className={`flex items-center justify-center h-14 w-14 rounded-2xl text-white shadow-2xl active:scale-90 disabled:bg-slate-200 disabled:text-slate-400 transition-all ${isThinkingMode ? 'bg-indigo-600' : 'bg-indigo-600'}`}>
-              <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-            </button>
-          </form>
+            )}
+            <form onSubmit={(e) => { e.preventDefault(); sendMessage(input, selectedFile); }} className="flex items-center space-x-4">
+              <div className="relative flex-1">
+                <input 
+                  type="text" 
+                  value={input} 
+                  onChange={(e) => setInput(e.target.value)} 
+                  placeholder={isThinkingMode ? "Input highly complex conceptual inquiry..." : "Ask your conceptual question..."} 
+                  className={`w-full transition-all duration-500 border rounded-2xl px-6 py-4 pr-32 focus:outline-none text-slate-800 dark:text-slate-100 shadow-sm ${isThinkingMode ? 'bg-white dark:bg-slate-900 border-indigo-500 ring-8 ring-indigo-500/10 shadow-indigo-500/20' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`} 
+                  disabled={isLoading} 
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center space-x-1.5">
+                  <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg></button>
+                  <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onloadend = () => setSelectedFile({ data: (reader.result as string).split(',')[1], mimeType: file.type });
+                    reader.readAsDataURL(file);
+                  }} />
+                  <button type="button" onClick={toggleVoiceInput} className={`p-2.5 rounded-xl transition-all active:scale-90 ${isRecording ? 'text-white bg-indigo-600 animate-pulse' : 'text-slate-400 hover:text-indigo-600'}`} title="Neural Voice Bridge">
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                  </button>
+                </div>
+              </div>
+              <button type="submit" disabled={(!input.trim() && !selectedFile) || isLoading} className={`flex items-center justify-center h-14 w-14 rounded-2xl text-white shadow-2xl active:scale-90 disabled:bg-slate-200 disabled:text-slate-400 transition-all ${isThinkingMode ? 'bg-indigo-600 shadow-indigo-500/50' : 'bg-indigo-600'}`}>
+                <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+              </button>
+            </form>
+          </div>
           {selectedFile && <div className="mt-3 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase flex items-center animate-in slide-in-from-left-2">System analyzing visual bridge • <button onClick={() => setSelectedFile(null)} className="ml-2 text-rose-500 hover:underline">Revoke</button></div>}
         </div>
       </footer>

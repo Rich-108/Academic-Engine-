@@ -9,6 +9,7 @@ interface ChatMessageProps {
   message: Message;
   onSelectTopic?: (topic: string) => void;
   onRefineConcept?: (lens: string) => void;
+  onHarvestConcept?: (term: string) => void;
   isDarkMode?: boolean;
 }
 
@@ -16,7 +17,13 @@ const sanitizeText = (text: string) => {
   return text.replace(/DEEP_LEARNING_TOPICS[\s\S]*?$/g, '').trim();
 };
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, onSelectTopic, onRefineConcept, isDarkMode }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ 
+  message, 
+  onSelectTopic, 
+  onRefineConcept, 
+  onHarvestConcept,
+  isDarkMode 
+}) => {
   const isAssistant = message.role === 'assistant';
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
@@ -113,7 +120,20 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onSelectTopic, onRef
                   <div>
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Deep Learning Nodes</span>
                     <nav className="flex flex-wrap gap-2">
-                      {topics.map((topic, i) => <button key={i} onClick={() => onSelectTopic?.(topic)} className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[11px] font-bold rounded-xl border border-slate-100 dark:border-slate-700 hover:bg-indigo-600 hover:text-white transition-all">{topic}</button>)}
+                      {topics.map((topic, i) => (
+                        <div key={i} className="flex items-center bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 overflow-hidden group/topic hover:border-indigo-500 transition-all">
+                          <button onClick={() => onSelectTopic?.(topic)} className="px-3 py-1.5 text-slate-500 dark:text-slate-400 text-[11px] font-bold hover:bg-indigo-600 hover:text-white transition-all">
+                            {topic}
+                          </button>
+                          <button 
+                            onClick={() => onHarvestConcept?.(topic)}
+                            title="Harvest to Mastery Hub"
+                            className="p-1.5 border-l border-slate-200 dark:border-slate-700 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-all"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+                          </button>
+                        </div>
+                      ))}
                     </nav>
                   </div>
                 )}
