@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
 import { encode, decode, decodeAudioData } from '../utils/audio';
@@ -12,22 +13,38 @@ interface LiveAudioSessionProps {
 const LiveAudioSession: React.FC<LiveAudioSessionProps> = ({ isOpen, onClose, isDarkMode, systemInstruction }) => {
   const [status, setStatus] = useState<'connecting' | 'listening' | 'speaking' | 'error'>('connecting');
   const [volume, setVolume] = useState(0);
+  const [retryCount, setRetryCount] = useState(0);
   
   const audioContextRef = useRef<{ input: AudioContext; output: AudioContext } | null>(null);
-  const sessionRef = useRef<any>(null);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const nextStartTimeRef = useRef(0);
   const streamRef = useRef<MediaStream | null>(null);
+  const sessionRef = useRef<any>(null);
+
+  const createBlob = (data: Float32Array): Blob => {
+    const l = data.length;
+    const int16 = new Int16Array(l);
+    for (let i = 0; i < l; i++) {
+      int16[i] = data[i] * 32768;
+    }
+    return {
+      data: encode(new Uint8Array(int16.buffer)),
+      mimeType: 'audio/pcm;rate=16000',
+    };
+  };
+
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
+    setStatus('connecting');
+  };
 
   useEffect(() => {
     if (!isOpen) return;
 
     let active = true;
-    let currentSession: any = null;
-
+    
     const startSession = async () => {
       try {
-        setStatus('connecting');
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         
         const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
@@ -44,53 +61,39 @@ const LiveAudioSession: React.FC<LiveAudioSessionProps> = ({ isOpen, onClose, is
               if (!active) return;
               setStatus('listening');
               
-              // Only start the processor once the socket is open
-              sessionPromise.then((session) => {
-                currentSession = session;
-                
-                const source = inputCtx.createMediaStreamSource(stream);
-                const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
-                
-                const analyzer = inputCtx.createAnalyser();
-                analyzer.fftSize = 256;
-                const bufferLength = analyzer.frequencyBinCount;
-                const dataArray = new Uint8Array(bufferLength);
-                
-                const updateVolume = () => {
-                  if (!active) return;
-                  analyzer.getByteFrequencyData(dataArray);
-                  const average = dataArray.reduce((a, b) => a + b) / bufferLength;
-                  setVolume(average);
-                  requestAnimationFrame(updateVolume);
-                };
-                updateVolume();
+              const source = inputCtx.createMediaStreamSource(stream);
+              const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
+              
+              const analyzer = inputCtx.createAnalyser();
+              analyzer.fftSize = 256;
+              const bufferLength = analyzer.frequencyBinCount;
+              const dataArray = new Uint8Array(bufferLength);
+              
+              const updateVolume = () => {
+                if (!active || !inputCtx) return;
+                analyzer.getByteFrequencyData(dataArray);
+                const average = dataArray.reduce((a, b) => a + b) / bufferLength;
+                setVolume(average);
+                requestAnimationFrame(updateVolume);
+              };
+              updateVolume();
 
-                scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
-                  if (!active || !currentSession) return;
-                  
-                  const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-                  const l = inputData.length;
-                  const int16 = new Int16Array(l);
-                  for (let i = 0; i < l; i++) {
-                    int16[i] = inputData[i] * 32768;
+              scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+                const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                const pcmBlob = createBlob(inputData);
+                
+                sessionPromise.then((session) => {
+                  if (active) {
+                    session.sendRealtimeInput({ media: pcmBlob });
                   }
-                  
-                  const pcmBlob: Blob = {
-                    data: encode(new Uint8Array(int16.buffer)),
-                    mimeType: 'audio/pcm;rate=16000',
-                  };
-                  
-                  try {
-                    currentSession.sendRealtimeInput({ media: pcmBlob });
-                  } catch (err) {
-                    console.error('Error sending audio data:', err);
-                  }
-                };
+                }).catch(err => {
+                  if (active) console.debug('Failed to send input:', err);
+                });
+              };
 
-                source.connect(analyzer);
-                source.connect(scriptProcessor);
-                scriptProcessor.connect(inputCtx.destination);
-              });
+              source.connect(analyzer);
+              source.connect(scriptProcessor);
+              scriptProcessor.connect(inputCtx.destination);
             },
             onmessage: async (message: LiveServerMessage) => {
               if (!active) return;
@@ -106,7 +109,7 @@ const LiveAudioSession: React.FC<LiveAudioSessionProps> = ({ isOpen, onClose, is
                   source.connect(outputCtx.destination);
                   source.addEventListener('ended', () => {
                     sourcesRef.current.delete(source);
-                    if (sourcesRef.current.size === 0) {
+                    if (sourcesRef.current.size === 0 && active) {
                       setStatus('listening');
                     }
                   });
@@ -128,12 +131,12 @@ const LiveAudioSession: React.FC<LiveAudioSessionProps> = ({ isOpen, onClose, is
               }
             },
             onerror: (e) => {
-              console.error('Live session error event:', e);
+              console.error('Live session error:', e);
               if (active) setStatus('error');
             },
             onclose: (e) => {
               console.log('Live session closed:', e);
-              if (active) setStatus('connecting');
+              if (active && status !== 'error') setStatus('connecting');
             },
           },
           config: {
@@ -156,7 +159,6 @@ const LiveAudioSession: React.FC<LiveAudioSessionProps> = ({ isOpen, onClose, is
 
     return () => {
       active = false;
-      currentSession = null;
       if (sessionRef.current) {
         try { sessionRef.current.close(); } catch(e) {}
       }
@@ -164,11 +166,11 @@ const LiveAudioSession: React.FC<LiveAudioSessionProps> = ({ isOpen, onClose, is
         streamRef.current.getTracks().forEach(track => track.stop());
       }
       if (audioContextRef.current) {
-        audioContextRef.current.input.close();
-        audioContextRef.current.output.close();
+        audioContextRef.current.input.close().catch(() => {});
+        audioContextRef.current.output.close().catch(() => {});
       }
     };
-  }, [isOpen, systemInstruction]);
+  }, [isOpen, systemInstruction, retryCount]);
 
   if (!isOpen) return null;
 
@@ -176,7 +178,7 @@ const LiveAudioSession: React.FC<LiveAudioSessionProps> = ({ isOpen, onClose, is
     <div className={`fixed inset-0 z-[250] flex items-center justify-center p-4 ${isDarkMode ? 'dark' : ''}`}>
       <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl animate-in fade-in duration-500" onClick={onClose} />
       
-      <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 animate-in zoom-in duration-300">
+      <div className="relative w-full max-sm:max-w-[340px] max-w-sm bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 animate-in zoom-in duration-300">
         <div className="p-6 md:p-10 text-center">
           <div className="flex justify-between items-start mb-6 md:mb-10">
             <div className="text-left">
@@ -196,7 +198,7 @@ const LiveAudioSession: React.FC<LiveAudioSessionProps> = ({ isOpen, onClose, is
               ></div>
               <div className={`h-24 w-24 md:h-32 md:w-32 rounded-full flex items-center justify-center shadow-2xl transition-all duration-500 ${
                 status === 'speaking' ? 'bg-indigo-600 scale-105' : 
-                status === 'error' ? 'bg-rose-500 animate-shake' : 
+                status === 'error' ? 'bg-rose-500' : 
                 status === 'connecting' ? 'bg-slate-100 dark:bg-slate-800' : 'bg-slate-200 dark:bg-slate-800'
               }`}>
                 {status === 'connecting' ? (
@@ -222,20 +224,32 @@ const LiveAudioSession: React.FC<LiveAudioSessionProps> = ({ isOpen, onClose, is
               <p className={`text-sm md:text-lg font-bold tracking-tight ${status === 'error' ? 'text-rose-500' : 'text-slate-600 dark:text-slate-300'}`}>
                 {status === 'listening' ? 'Listening...' : 
                  status === 'speaking' ? 'Synthesizing...' : 
-                 status === 'error' ? 'Connection Interrupt' : 'Connecting Bridge...'}
+                 status === 'error' ? 'Network Bridge Error' : 'Connecting...'}
               </p>
-              {status === 'error' && <p className="text-[10px] mt-2 text-slate-400 font-medium">Please check your network and try again.</p>}
+              {status === 'error' && (
+                <p className="text-[10px] mt-2 text-slate-400 font-bold uppercase tracking-widest">Connection refused by gateway</p>
+              )}
             </div>
           </div>
           
-          <button 
-            onClick={onClose}
-            className={`mt-8 w-full py-3 rounded-xl text-[11px] font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 ${
-              status === 'error' ? 'bg-rose-600 text-white' : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'
-            }`}
-          >
-            {status === 'error' ? 'Dismiss' : 'Close Bridge'}
-          </button>
+          <div className="mt-8 flex flex-col space-y-3">
+            {status === 'error' && (
+              <button 
+                onClick={handleRetry}
+                className="w-full py-3 rounded-xl text-[11px] font-black uppercase tracking-widest bg-indigo-600 text-white shadow-xl transition-all active:scale-95"
+              >
+                Retry Connection
+              </button>
+            )}
+            <button 
+              onClick={onClose}
+              className={`w-full py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 ${
+                status === 'error' ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400' : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xl'
+              }`}
+            >
+              Close Bridge
+            </button>
+          </div>
         </div>
       </div>
     </div>

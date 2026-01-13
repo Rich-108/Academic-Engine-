@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Message, FileData, GlossaryItem, SavedSession } from './types';
 import { getGeminiResponse } from './services/geminiService';
@@ -203,7 +204,10 @@ const App: React.FC = () => {
       }
     };
     recognition.onerror = (event: any) => {
-      console.error('Speech recognition error', event.error);
+      // Gracefully handle 'no-speech' error without a console log
+      if (event.error !== 'no-speech') {
+        console.warn('Speech recognition status:', event.error);
+      }
       stopVoiceTranscription();
     };
     recognition.onend = () => setIsRecording(false);
