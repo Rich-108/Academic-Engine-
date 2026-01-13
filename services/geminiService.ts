@@ -27,7 +27,7 @@ export const getGeminiResponse = async (
   history: { role: 'user' | 'assistant', content: string }[],
   attachment?: FileData
 ) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: API_KEY });
   
   return withRetry(async () => {
     const formattedHistory = history.map(h => ({
@@ -93,7 +93,7 @@ export const getGeminiResponse = async (
 };
 
 export const getGeminiTTS = async (text: string, voiceName: string = 'Kore') => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
     contents: [{ parts: [{ text }] }],
