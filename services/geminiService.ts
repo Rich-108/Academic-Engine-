@@ -28,27 +28,41 @@ export const getGeminiResponse = async (
   history: { role: 'user' | 'assistant', content: string }[],
   attachment?: FileData
 ) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  // Use strictly the required initialization pattern
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   return withRetry(async () => {
+    // Process history: ensure strictly alternating user/model turns and single text parts
     const contents: any[] = [];
     
-    // Process history: ensure strictly alternating user/model turns
     history.forEach((h) => {
       const role = h.role === 'assistant' ? 'model' : 'user';
+      const text = (h.content || "").trim();
+      if (!text) return; // Skip empty messages in history
+
       if (contents.length > 0 && contents[contents.length - 1].role === role) {
-        // Merge consecutive same-role parts
-        contents[contents.length - 1].parts.push({ text: h.content || "" });
+        // Concatenate text instead of adding multiple parts for same role
+        contents[contents.length - 1].parts[0].text += "\n\n" + text;
       } else {
         contents.push({
           role,
-          parts: [{ text: h.content || "" }]
+          parts: [{ text }]
         });
       }
     });
 
-    const currentParts: any[] = [{ text: userMessage || "Provide analysis." }];
+    // Construct the current turn
+    const currentParts: any[] = [];
+    
+    // Add text first if it exists
+    if (userMessage.trim()) {
+      currentParts.push({ text: userMessage });
+    } else if (!attachment) {
+      // Fallback if somehow both are missing
+      currentParts.push({ text: "Please continue with the analysis." });
+    }
 
+    // Add image if provided
     if (attachment) {
       currentParts.push({
         inlineData: {
@@ -58,70 +72,70 @@ export const getGeminiResponse = async (
       });
     }
 
-    // Ensure the conversation starts with 'user' and alternates
+    // Check if we need to append currentParts to the last turn or create a new one
     if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
       contents[contents.length - 1].parts.push(...currentParts);
     } else {
       contents.push({ role: 'user', parts: currentParts });
     }
 
+    // Ensure the conversation starts with a user turn (API requirement)
+    if (contents.length > 0 && contents[0].role !== 'user') {
+      contents.shift(); // Remove the leading model turn if it exists
+    }
+
     try {
+      // Use gemini-3-pro-preview for complex reasoning tasks like "Mastery Engine"
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3-pro-preview',
         contents,
         config: {
-          systemInstruction: `You are Mastery Engine, a world-class conceptual architect for students. 
+          systemInstruction: `You are Mastery Engine, a world-class conceptual architect. 
           
           STRICT OPERATING PROTOCOL:
-          Prioritize the underlying CONCEPT before specific answers. Deconstruct complexity into first principles and logic.
+          Prioritize the underlying CONCEPT before providing specific answers. Deconstruct complexity into first principles and foundational logic.
 
           STRICT RESPONSE STRUCTURE:
           1. THE CORE PRINCIPLE
-          [Deep paragraph on foundational logic.]
+          [A deep, authoritative paragraph on the foundational logic or "why" behind the subject.]
 
           2. MENTAL MODEL (ANALOGY)
-          [Vivid everyday analogy.]
+          [A vivid analogy that bridges abstract logic to a concrete experience.]
 
           3. THE DIRECT ANSWER
-          [Technical precision addressing the specific query.]
+          [Address the specific query with technical precision.]
 
           4. CONCEPT MAP
-          [Provide a VALID Mermaid flowchart TD.
-          
-          CRITICAL MERMAID RULES:
-          - Always start with 'flowchart TD' on its own line.
-          - Every node MUST have an alphanumeric ID.
-          - Use standard "-->" for connections.
-          - Example format:
-            flowchart TD
-            A["Core Concept"] --> B["Sub-concept"]
-            B --> C["Detail"]
-          - DO NOT output the chart and header on the same line.]
+          [Provide a VALID Mermaid flowchart TD. Start with 'flowchart TD' on its own line. Use standard --> for arrows. Wrap labels in quotes.]
 
           VISUAL STYLE:
           - Use standard sentence case.
           - Double line breaks between sections.
-          - No markdown symbols except for the Mermaid block.
+          - Plain text only (no bold/italics unless essential).
 
-          DEEP_LEARNING_TOPICS: [List 3 related topics]`,
+          DEEP_LEARNING_TOPICS: [List 3 related advanced topics separated by commas]`,
           temperature: 0.7,
         },
       });
 
       if (!response || !response.text) {
-        throw new Error("Empty response from engine.");
+        throw new Error("Empty response from the neural gateway.");
       }
 
       return response.text.trim();
     } catch (apiError: any) {
-      console.error("Gemini API Error:", apiError);
+      console.error("Gemini API Deep Error Log:", {
+        message: apiError.message,
+        status: apiError.status,
+        details: apiError.details
+      });
       throw apiError;
     }
   });
 };
 
 export const getGeminiTTS = async (text: string, voiceName: string = 'Kore') => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
     contents: [{ parts: [{ text }] }],
