@@ -12,7 +12,7 @@ import { jsPDF } from 'jspdf';
 const INITIAL_MESSAGE: Message = {
   id: 'welcome',
   role: 'assistant',
-  content: "Welcome to Mastery Engine. I am your conceptual architect. Propose any subject or principle, and I will decompose it into its first principles.",
+  content: "Welcome to Mastery Engine. I am your Conceptual Architect. Propose any subject or question, and we will deconstruct it together to its first principles.",
   timestamp: new Date(),
 };
 
@@ -207,7 +207,6 @@ const App: React.FC = () => {
         }
       }
 
-      // We combine the text before recording with the new final results and current interim results
       const combined = (lastFinalTranscriptRef.current + ' ' + finalTranscript + ' ' + interimTranscript).replace(/\s+/g, ' ').trim();
       setInput(combined);
       
@@ -267,6 +266,7 @@ const App: React.FC = () => {
   const sendMessage = async (text: string, file?: FileData | null, lens?: string) => {
     if ((!text.trim() && !file && !lens) || isLoading) return;
     if (isRecording) stopVoiceTranscription();
+
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -274,17 +274,41 @@ const App: React.FC = () => {
       timestamp: new Date(),
       attachment: file || undefined
     };
+
+    const historySnapshot = messages
+      .filter(m => m.id !== 'welcome')
+      .map(msg => ({ role: msg.role as 'user' | 'assistant', content: msg.content }));
+
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setSelectedFile(null);
     setIsLoading(true);
+
     try {
-      const history = messages.filter(m => m.id !== 'welcome').map(msg => ({ role: msg.role as 'user' | 'assistant', content: msg.content }));
-      const responseText = await getGeminiResponse(lens ? `${text} (Pivot through ${lens})` : text, history, file || undefined);
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: responseText, timestamp: new Date() }]);
-    } catch (err) { 
-      console.error(err); 
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: "I encountered a synchronization error. Please try restating your subject.", timestamp: new Date() }]);
+      const responseText = await getGeminiResponse(
+        lens ? `${text} (Pivot through ${lens})` : (text || "Describe the attached context."), 
+        historySnapshot, 
+        file || undefined
+      );
+      
+      setMessages(prev => [...prev, { 
+        id: (Date.now() + 1).toString(), 
+        role: 'assistant', 
+        content: responseText, 
+        timestamp: new Date() 
+      }]);
+    } catch (err: any) { 
+      console.error("Mastery Engine Synthesis Error:", err);
+      const errorMessage = err.message?.includes('Safety') 
+        ? "The synthesis path was blocked by safety protocols. Try reframing your subject."
+        : "I encountered a synchronization error in the neural bridge. Please try restating your subject.";
+        
+      setMessages(prev => [...prev, { 
+        id: Date.now().toString(), 
+        role: 'assistant', 
+        content: errorMessage, 
+        timestamp: new Date() 
+      }]);
     } finally { 
       setIsLoading(false); 
     }
@@ -339,16 +363,16 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-4 py-6 md:px-20 custom-scrollbar">
-        <div className="max-w-4xl mx-auto">
+      <main className="flex-1 overflow-y-auto px-4 py-8 md:px-20 custom-scrollbar">
+        <div className="max-w-5xl mx-auto">
           {messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} onSelectTopic={(t) => sendMessage(`Provide an analysis of: ${t}`)} onRefineConcept={(lens) => sendMessage('', null, lens)} onHarvestConcept={handleHarvestConcept} isDarkMode={isDarkMode} />
+            <ChatMessage key={msg.id} message={msg} onSelectTopic={(t) => sendMessage(`Deconstruct the concept of: ${t}`)} onRefineConcept={(lens) => sendMessage('', null, lens)} onHarvestConcept={handleHarvestConcept} isDarkMode={isDarkMode} />
           ))}
           {isLoading && (
-            <div className="flex justify-start mb-10 animate-pulse">
-              <div className="bg-white dark:bg-slate-900 rounded-2xl px-5 py-3 shadow-lg border border-slate-200 dark:border-slate-800 flex items-center space-x-3">
-                <div className="h-2 w-2 bg-indigo-500 rounded-full animate-bounce"></div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500 font-display">Neural Synthesis in progress...</p>
+            <div className="flex justify-start mb-12 animate-pulse">
+              <div className="bg-white dark:bg-slate-900 rounded-[2rem] px-8 py-5 shadow-2xl border border-slate-200 dark:border-slate-800 flex items-center space-x-4">
+                <div className="h-3 w-3 bg-indigo-500 rounded-full animate-bounce"></div>
+                <p className="text-[11px] font-black uppercase tracking-[0.3em] text-indigo-500 font-display">Architecting Knowledge Path...</p>
               </div>
             </div>
           )}
@@ -356,22 +380,22 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      <footer className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-3xl border-t border-slate-200 dark:border-slate-800 p-3 sm:p-6 md:p-10 z-40">
-        <div className="max-w-3xl mx-auto">
-          <form onSubmit={(e) => { e.preventDefault(); sendMessage(input, selectedFile); }} className="flex items-center space-x-2 md:space-x-4">
+      <footer className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-3xl border-t border-slate-200 dark:border-slate-800 p-4 sm:p-8 md:p-12 z-40">
+        <div className="max-w-4xl mx-auto">
+          <form onSubmit={(e) => { e.preventDefault(); sendMessage(input, selectedFile); }} className="flex items-center space-x-3 md:space-x-6">
             <div className="relative flex-1 group">
               <input 
                 type="text" 
                 value={input} 
                 onChange={(e) => setInput(e.target.value)} 
-                placeholder={isRecording ? "Listening to your subject..." : "Enter a subject to deconstruct into concepts..."} 
-                className={`w-full border rounded-2xl px-5 py-3.5 pr-24 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 text-slate-800 dark:text-slate-100 shadow-2xl border-slate-200 dark:border-slate-700 text-[12px] md:text-[14px] font-medium transition-all
+                placeholder={isRecording ? "Listening to your inquiry..." : "Enter a subject for conceptual deconstruction..."} 
+                className={`w-full border rounded-[2rem] px-8 py-4.5 pr-28 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 text-slate-800 dark:text-slate-100 shadow-2xl border-slate-200 dark:border-slate-700 text-[13px] md:text-[15px] font-medium transition-all
                   ${isRecording ? 'bg-indigo-50/50 dark:bg-indigo-950/30 border-indigo-400 dark:border-indigo-600 ring-4 ring-indigo-500/20' : 'bg-slate-50 dark:bg-slate-800'}
                 `} 
                 disabled={isLoading}
               />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-1">
-                <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors" title="Attach Image"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg></button>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center space-x-2">
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors" title="Reference Image"><svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h14a2 2 0 002-2V6a2 2 0 00-2-2H4a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></button>
                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
@@ -383,10 +407,10 @@ const App: React.FC = () => {
                 <button 
                   type="button" 
                   onClick={isRecording ? stopVoiceTranscription : startVoiceTranscription} 
-                  className={`p-2 rounded-xl transition-all active:scale-90 ${isRecording ? 'text-white bg-indigo-600 animate-pulse shadow-lg shadow-indigo-500/30' : 'text-slate-400 hover:text-indigo-600'}`}
-                  title={isRecording ? "Stop Listening" : "Start Voice Input"}
+                  className={`p-2.5 rounded-xl transition-all active:scale-90 ${isRecording ? 'text-white bg-indigo-600 animate-pulse shadow-lg shadow-indigo-500/30' : 'text-slate-400 hover:text-indigo-600'}`}
+                  title={isRecording ? "Stop Dictation" : "Dictate Inquiry"}
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                   </svg>
                 </button>
@@ -395,18 +419,18 @@ const App: React.FC = () => {
             <button 
               type="submit" 
               disabled={(!input.trim() && !selectedFile) || isLoading} 
-              className="flex items-center justify-center h-12 w-12 md:h-14 md:w-14 rounded-2xl text-white shadow-2xl active:scale-95 disabled:opacity-50 transition-all bg-indigo-600 hover:bg-indigo-700 flex-shrink-0"
+              className="flex items-center justify-center h-14 w-14 md:h-16 md:w-16 rounded-[1.5rem] text-white shadow-2xl active:scale-95 disabled:opacity-50 transition-all bg-indigo-600 hover:bg-indigo-700 flex-shrink-0"
             >
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+              <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
             </button>
           </form>
-          {selectedFile && <div className="mt-2 text-[10px] font-black text-indigo-600 flex items-center px-2 animate-in slide-in-from-left-2 uppercase tracking-widest font-display">Context attached • <button onClick={() => setSelectedFile(null)} className="ml-2 text-rose-500 underline">Remove</button></div>}
+          {selectedFile && <div className="mt-3 text-[11px] font-black text-indigo-600 flex items-center px-4 animate-in slide-in-from-left-2 uppercase tracking-widest font-display">Reference context attached • <button onClick={() => setSelectedFile(null)} className="ml-2 text-rose-500 underline">Remove</button></div>}
         </div>
       </footer>
 
       <Glossary items={glossary} onRemove={(id) => setGlossary(prev => { const upd = prev.filter(i => i.id !== id); localStorage.setItem(GLOSSARY_KEY, JSON.stringify(upd)); return upd; })} onAdd={(term, sub, def) => { const item = { id: Date.now().toString(), term, subject: sub, definition: def, timestamp: new Date() }; setGlossary(prev => { const upd = [item, ...prev]; localStorage.setItem(GLOSSARY_KEY, JSON.stringify(upd)); return upd; }); }} isOpen={isGlossaryOpen} onClose={() => setIsGlossaryOpen(false)} isDarkMode={isDarkMode} />
-      <LiveAudioSession isOpen={isLiveSessionOpen} onClose={() => setIsLiveSessionOpen(false)} isDarkMode={isDarkMode} systemInstruction="You are Mastery Engine. Decompose subjects into concepts." />
-      <ConfirmationModal isOpen={isConfirmClearOpen} onClose={() => setIsConfirmClearOpen(false)} onConfirm={handleClearHistory} title="Clear Session" message="This will permanently delete all conceptual progress in this thread." confirmLabel="Reset Thread" isDarkMode={isDarkMode} />
+      <LiveAudioSession isOpen={isLiveSessionOpen} onClose={() => setIsLiveSessionOpen(false)} isDarkMode={isDarkMode} systemInstruction="You are Mastery Engine. Deconstruct subjects into foundational concepts using logic and first principles." />
+      <ConfirmationModal isOpen={isConfirmClearOpen} onClose={() => setIsConfirmClearOpen(false)} onConfirm={handleClearHistory} title="Reset Deconstruction" message="This will clear the current architectural thread. All derived logic will be lost from view." confirmLabel="Confirm Reset" isDarkMode={isDarkMode} />
     </div>
   );
 };
