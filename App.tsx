@@ -61,7 +61,8 @@ const App: React.FC = () => {
   const [input, setInput] = useState('');
   const [interimInput, setInterimInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<FileData | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('theme');
@@ -72,6 +73,7 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const exportButtonRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const shouldContinueListening = useRef(false);
 
   const handleEnter = () => {
     setHasEntered(true);
@@ -79,20 +81,23 @@ const App: React.FC = () => {
   };
 
   /**
-   * VOICE INPUT SYSTEM
-   * Re-engineered to handle browser SpeechRecognition lifecycle more effectively.
+   * PERSISTENT VOICE INPUT (SPEECH-TO-TEXT)
+   * Designed for seamless 'voice typing'.
    */
-  const stopVoiceTranscription = useCallback(() => {
+  const stopVoiceInput = useCallback((explicitStop = true) => {
+    if (explicitStop) {
+      shouldContinueListening.current = false;
+    }
+    
     if (recognitionRef.current) {
       try {
-        // Remove listeners first to prevent race conditions during teardown
         recognitionRef.current.onresult = null;
         recognitionRef.current.onerror = null;
         recognitionRef.current.onend = null;
         recognitionRef.current.onstart = null;
-        
         recognitionRef.current.stop();
-        // Fallback to abort if it doesn't close quickly
+        
+        // Final cleanup
         setTimeout(() => {
           if (recognitionRef.current) {
             try { recognitionRef.current.abort(); } catch (e) {}
@@ -100,33 +105,36 @@ const App: React.FC = () => {
           }
         }, 100);
       } catch (e) {
-        console.warn("Speech stop warning:", e);
+        console.warn("Speech engine cleanup warning:", e);
       }
     }
-    setIsRecording(false);
-    setInterimInput('');
+    
+    if (explicitStop) {
+      setIsListening(false);
+      setInterimInput('');
+    }
   }, []);
 
-  const startVoiceTranscription = useCallback(async () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  const startVoiceInput = useCallback(async () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Voice input is not supported in this browser. Please use Chrome or Safari.");
+      setVoiceError("Speech recognition not supported");
       return;
     }
 
-    // Attempt to request mic access explicitly first if supported, though start() usually handles it
     try {
+      // Ensure we have permission
       await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
-      console.error("Microphone permission denied:", err);
-      alert("Microphone access is required for voice input.");
+      setVoiceError("Microphone permission denied");
+      setIsListening(false);
       return;
     }
 
-    // Cleanup any existing instance
-    if (recognitionRef.current) {
-      stopVoiceTranscription();
-    }
+    // Prepare new session
+    stopVoiceInput(false); 
+    shouldContinueListening.current = true;
+    setVoiceError(null);
 
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
@@ -134,7 +142,7 @@ const App: React.FC = () => {
     recognition.lang = 'en-US';
 
     recognition.onstart = () => {
-      setIsRecording(true);
+      setIsListening(true);
       setInterimInput('');
     };
 
@@ -152,10 +160,7 @@ const App: React.FC = () => {
       }
 
       if (finalForThisResult) {
-        setInput(prev => {
-          const joined = (prev + ' ' + finalForThisResult).trim();
-          return joined;
-        });
+        setInput(prev => (prev.trim() + ' ' + finalForThisResult).trim());
         setInterimInput('');
       } else {
         setInterimInput(interimForThisResult);
@@ -163,19 +168,32 @@ const App: React.FC = () => {
     };
 
     recognition.onerror = (event: any) => {
-      // 'no-speech' is triggered when the mic is open but no sound is detected for a few seconds.
-      // This is normal browser behavior, not a crash. We just reset UI.
-      console.warn(`Speech engine status change: ${event.error}`);
+      const error = event.error;
+      console.warn(`Speech recognition engine: ${error}`);
       
-      if (['no-speech', 'audio-capture', 'not-allowed', 'network'].includes(event.error)) {
-        stopVoiceTranscription();
+      if (error === 'no-speech') {
+        // 'no-speech' is a timeout. We don't set a visible error, 
+        // just let it restart in onend if shouldContinueListening is true.
+        return;
+      }
+      
+      if (['audio-capture', 'not-allowed', 'network'].includes(error)) {
+        setVoiceError(`System: ${error}`);
+        stopVoiceInput(true);
       }
     };
 
     recognition.onend = () => {
-      // The browser stopped the recognition. Ensure UI reflects this.
-      if (recognitionRef.current === recognition) {
-        setIsRecording(false);
+      // If we didn't stop explicitly (e.g., timeout), restart to maintain persistence
+      if (shouldContinueListening.current) {
+        try {
+          recognition.start();
+        } catch (e) {
+          console.error("Speech restart failed:", e);
+          setIsListening(false);
+        }
+      } else {
+        setIsListening(false);
         setInterimInput('');
         recognitionRef.current = null;
       }
@@ -186,21 +204,29 @@ const App: React.FC = () => {
     try {
       recognition.start();
     } catch (e) {
-      console.error("Failed to start speech engine:", e);
-      stopVoiceTranscription();
+      console.error("Speech engine failed to initialize:", e);
+      setIsListening(false);
     }
-  }, [stopVoiceTranscription]);
+  }, [stopVoiceInput]);
 
   const toggleVoiceInput = () => {
-    if (isRecording) {
-      stopVoiceTranscription();
+    if (isListening) {
+      stopVoiceInput();
     } else {
-      startVoiceTranscription();
+      startVoiceInput();
     }
   };
 
   useEffect(() => {
+    if (voiceError) {
+      const timer = setTimeout(() => setVoiceError(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [voiceError]);
+
+  useEffect(() => {
     return () => {
+      shouldContinueListening.current = false;
       if (recognitionRef.current) {
         try { recognitionRef.current.abort(); } catch (e) {}
       }
@@ -356,12 +382,11 @@ const App: React.FC = () => {
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isLoading]);
 
   const sendMessage = async (text: string, file?: FileData | null, lens?: string) => {
-    // Collect both current input and any residual interim voice text
     const messageContent = (text || interimInput).trim();
     if ((!messageContent && !file && !lens) || isLoading) return;
     
-    // Stop voice engine if a message is sent
-    if (isRecording) stopVoiceTranscription();
+    // Stop voice engine if a message is explicitly sent
+    if (isListening) stopVoiceInput();
     
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -410,8 +435,7 @@ const App: React.FC = () => {
 
   if (!hasEntered) return <LandingPage onEnter={handleEnter} isDarkMode={isDarkMode} />;
 
-  // Computed value for the input field to show interim speech text while recording
-  const displayInputValue = isRecording 
+  const displayInputValue = isListening 
     ? (input + (interimInput ? ' ' + interimInput : '')).trim() 
     : input;
 
@@ -440,7 +464,7 @@ const App: React.FC = () => {
               className={`p-1.5 md:p-2 rounded-lg transition-all ${isExportMenuOpen ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30' : 'text-slate-400 hover:text-indigo-600'}`}
               title="Export Archive"
             >
-              <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+              <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             </button>
             
             {isExportMenuOpen && (
@@ -500,16 +524,16 @@ const App: React.FC = () => {
                 type="text" 
                 value={displayInputValue} 
                 onChange={(e) => setInput(e.target.value)} 
-                placeholder={isRecording ? "Listening to neural patterns..." : "Enter subject for conceptual deconstruction..."} 
-                className={`w-full border rounded-[1.5rem] md:rounded-[2rem] px-4 md:px-8 py-3 md:py-4.5 pr-20 md:pr-36 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 text-slate-800 dark:text-slate-100 shadow-2xl border-slate-200 dark:border-slate-700 text-[11px] md:text-[15px] font-medium transition-all ${isRecording ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-300 dark:border-rose-900 ring-4 ring-rose-500/10' : 'bg-slate-50 dark:bg-slate-800'}`}
+                placeholder={isListening ? "Listening to neural patterns..." : (voiceError || "Enter subject for conceptual deconstruction...")} 
+                className={`w-full border rounded-[1.5rem] md:rounded-[2rem] px-4 md:px-8 py-3 md:py-4.5 pr-20 md:pr-36 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 text-slate-800 dark:text-slate-100 shadow-2xl border-slate-200 dark:border-slate-700 text-[11px] md:text-[15px] font-medium transition-all ${isListening ? 'bg-indigo-50/20 dark:bg-indigo-900/10 border-indigo-300 dark:border-indigo-800 ring-4 ring-indigo-500/10' : voiceError ? 'bg-rose-50/20 dark:bg-rose-950/10 border-rose-200 dark:border-rose-800' : 'bg-slate-50 dark:bg-slate-800'}`}
                 disabled={isLoading}
               />
               <div className="absolute right-2 md:right-3 top-1/2 -translate-y-1/2 flex items-center space-x-1">
                 <button 
                   type="button" 
                   onClick={toggleVoiceInput} 
-                  className={`p-1.5 md:p-2 rounded-full transition-all ${isRecording ? 'text-rose-600 bg-rose-100 dark:bg-rose-900/40 animate-pulse ring-4 ring-rose-500/30 shadow-lg shadow-rose-500/40' : 'text-slate-400 hover:text-indigo-600'}`}
-                  title={isRecording ? "End Voice Capture" : "Begin Voice Capture"}
+                  className={`p-1.5 md:p-2 rounded-full transition-all ${isListening ? 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900/40 animate-pulse ring-4 ring-indigo-500/30 shadow-lg shadow-indigo-500/40' : 'text-slate-400 hover:text-indigo-600'}`}
+                  title={isListening ? "End Voice Input" : "Begin Voice Input"}
                 >
                   <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
