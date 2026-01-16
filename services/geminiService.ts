@@ -74,9 +74,9 @@ export const getGeminiResponse = async (
       contents.shift();
     }
 
-    // Using gemini-3-flash-preview for maximum reliability and speed
+    // Using gemini-flash-lite-latest for efficiency and lower latency
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-flash-lite-latest',
       contents,
       config: {
         systemInstruction: `You are Mastery Engine, a conceptual architect. 
